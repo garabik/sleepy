@@ -53,8 +53,10 @@ def get_duration(x):
 def format_time(t):
     "human readable time (duration)"
     subseconds = t-int(t)
-    t = int(t)
+    #t = int(t)
     minutes, seconds = divmod(t, 60)
+    minutes = int(round(minutes))
+    seconds = int(round(seconds))
     hours, minutes = divmod(minutes, 60)
     days, hours = divmod(hours, 24)
     weeks, days = divmod(days, 7)
