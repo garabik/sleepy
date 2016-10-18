@@ -139,7 +139,7 @@ if __name__ == '__main__':
             break
         elif stopsleep - now > 0.9*interval:
             out = format_output(startsleep, stopsleep, sleeptime, now)
-            print (out, '      ', end='\r', file=sys.stderr); sys.stderr.flush()
+            print (' ', out, end='    \r', file=sys.stderr); sys.stderr.flush()
         elif stopsleep - now < 1.5*interval:
             pause = min(pause/2, (stopsleep-now))
         time.sleep(pause)
