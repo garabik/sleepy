@@ -1,0 +1,146 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+
+import time
+
+if hasattr(time, 'perf_counter'):
+    perf_counter = time.perf_counter
+else:
+    perf_counter = time.time
+
+starttime = perf_counter()
+
+import sys
+import string, unicodedata
+
+
+try:
+    from argparse import ArgumentParser, REMAINDER
+    using_optparse = False
+except ImportError:
+    from optparse import OptionParser as ArgumentParser
+    using_optparse = True
+
+
+VERSION='0.1'
+
+def DEBUG(level, *msg, **args):
+    end = args.get('end', '\n')
+    if level<=debuglevel:
+        print(*msg, file=sys.stderr, end=end)
+        sys.stderr.flush()
+
+def get_duration(x):
+    "convert duration - a number with 's', 'm', 'h', 'd' or 'S' suffix to seconds"
+    if not x: # None or empty string
+        return x
+    suffix = 's'
+    conv = { 's': 1,
+             'm': 60,
+             'h': 3600,
+             'd': 24*3600+0.002,
+             'S': 24*3600+39*60+35.24409
+            }
+    if x[-1] in conv:
+        suffix = x[-1]
+        x = x[:-1]
+
+    d = float(x)
+    d = conv[suffix] * d
+    return d
+
+def format_time(t):
+    "human readable time (duration)"
+    subseconds = t-int(t)
+    t = int(t)
+    minutes, seconds = divmod(t, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    weeks, days = divmod(days, 7)
+    r = []
+    if weeks:
+        r.append(str(weeks)+'w')
+    if r or days:
+        r.append(str(days)+'d')
+    if r or hours:
+        r.append('{:2}h'.format(hours))
+    if r or minutes:
+        r.append('{:2}m'.format(minutes))
+    r.append('{:02}s'.format(seconds))
+
+    r = ''.join(r)
+
+    return r
+
+def format_output(start, stop, sleeptime, now, formatstring='{passed}+{remaining}={sleeptime}'):
+    remaining = format_time(stop - now)
+    passed = format_time(now - start)
+    sleeptime = format_time(sleeptime)
+    f = formatstring.format(passed=passed, remaining=remaining, sleeptime=sleeptime)
+    return f
+
+if __name__ == '__main__':
+
+    parser = ArgumentParser(prog='sleepy',
+            description='Delay for a specified amount of time, with a countdown.')
+    if using_optparse:
+        DEBUG(3, 'using optparse')
+        parser.add_argument = parser.add_option
+        parser.parse_known_args = parser.parse_args
+        parser.disable_interspersed_args()
+
+    parser.add_argument('-v', dest='debuglevel', action='count',
+                       default = 0,
+                       help='Be verbose (repeat for more)')
+
+    parser.add_argument('--interval', dest='interval', action='store',
+                       default = '1',
+                       help='Print countdown in these intervals (default 1)')
+
+
+    if not using_optparse:
+        parser.add_argument('--version', action='version',
+                       version='%(prog)s '+VERSION)
+
+    args, rest = parser.parse_known_args()
+
+    global debuglevel
+    debuglevel = args.debuglevel
+    DEBUG(3, 'args:', str(args))
+    DEBUG(3, 'optparse:', using_optparse)
+    DEBUG(3, 'rest:', repr(rest))
+
+    sleeptime = sum(get_duration(x) for x in rest)
+    DEBUG(3, 'sleep time', sleeptime)
+
+    interval = get_duration(args.interval)
+    pause = interval
+
+    now = perf_counter()
+    correction = now - starttime
+    startsleep = now
+
+    DEBUG(3, 'Correction', correction)
+    if correction < 0:
+        DEBUG(0, 'Negative time lapse detected, ignoring')
+    elif correction > 10:
+        DEBUG(0, 'Took too long to start the program')
+    sleeptime_corr = sleeptime - correction
+    if sleeptime_corr < 0:
+        DEBUG(1, 'Took too long to start the program, missed', sleeptime_corr, 'seconds')
+
+    stopsleep = sleeptime_corr+startsleep
+
+    while True:
+
+        now = perf_counter()
+        if now >= stopsleep:
+            break
+        elif stopsleep - now > 0.9*interval:
+            out = format_output(startsleep, stopsleep, sleeptime, now)
+            print (out, '      ', end='\r', file=sys.stderr); sys.stderr.flush()
+        elif stopsleep - now < 1.5*interval:
+            pause = min(pause/2, (stopsleep-now))
+        time.sleep(pause)
+
