@@ -9,11 +9,10 @@ if hasattr(time, 'perf_counter'):
 else:
     perf_counter = time.time
 
-starttime = perf_counter()
+# if run as an executable, this is the start time used for start-up time corrections
+__starttime = perf_counter()
 
 import sys
-import string, unicodedata
-
 
 try:
     from argparse import ArgumentParser, REMAINDER
@@ -23,18 +22,18 @@ except ImportError:
     using_optparse = True
 
 
-VERSION='0.1'
-
 def DEBUG(level, *msg, **args):
+    if not hasattr(DEBUG, 'debuglevel'):
+        DEBUG.debuglevel = 0
     end = args.get('end', '\n')
-    if level<=debuglevel:
+    if level<=DEBUG.debuglevel:
         print(*msg, file=sys.stderr, end=end)
         sys.stderr.flush()
 
-def get_duration(x):
+def get_duration(arg):
     "convert duration - a number with 's', 'm', 'h', 'd' or 'S' suffix to seconds"
-    if not x: # None or empty string
-        return x
+    if not arg: # None or empty string
+        return arg
     suffix = 's'
     conv = { 's': 1,
              'm': 60,
@@ -42,11 +41,24 @@ def get_duration(x):
              'd': 24*3600+0.002,
              'S': 24*3600+39*60+35.24409
             }
-    if x[-1] in conv:
-        suffix = x[-1]
-        x = x[:-1]
+    if arg[-1] in conv:
+        suffix = arg[-1]
+        x = arg[:-1]
+    else:
+        x = arg
 
-    d = float(x)
+    value_ok = False
+    try:
+        d = float(x)
+        value_ok = d>=0
+    except ValueError:
+        value_ok = False
+
+    if not value_ok:
+        print(sys.argv[0]+": invalid time interval: '%s'" % arg, file=sys.stderr)
+        print("Try '%s --help' for more information." % sys.argv[0], file=sys.stderr)
+        sys.exit(1)
+
     d = conv[suffix] * d
     return d
 
@@ -69,20 +81,66 @@ def format_time(t):
         r.append('{:2}h'.format(hours))
     if r or minutes:
         r.append('{:2}m'.format(minutes))
-    r.append('{:02}s'.format(seconds))
+    fmt_sec = '{:02}s'.format(seconds)
+#    if subseconds > 0.1:
+#        fmt_sec += '{:.1f}'.format(subseconds)[1:]
+#    fmt_sec += 's'
+
+    r.append(fmt_sec)
 
     r = ''.join(r)
 
     return r
 
-def format_output(start, stop, sleeptime, now, formatstring='{passed}+{remaining}={sleeptime}'):
+def format_output(start, stop, sleeptime, now, symbol, formatstring='{symbol} {sleeptime} - {passed} = {remaining}'):
     remaining = format_time(stop - now)
     passed = format_time(now - start)
     sleeptime = format_time(sleeptime)
-    f = formatstring.format(passed=passed, remaining=remaining, sleeptime=sleeptime)
+    f = formatstring.format(passed=passed, remaining=remaining, sleeptime=sleeptime, symbol=symbol)
     return f
 
+def sleep(seconds, interval=1, debuglevel=0, starttime=None):
+    if starttime is None:
+        starttime = perf_counter()
+    DEBUG.debuglevel = debuglevel
+    DEBUG(3, 'starttime', starttime)
+
+    now = perf_counter()
+    correction = now - starttime
+    startsleep = now
+
+    DEBUG(3, 'Correction', correction)
+    if correction < 0:
+        DEBUG(0, 'Negative time lapse detected, ignoring')
+    elif correction > 10:
+        DEBUG(0, 'Took too long to start the program')
+    sleeptime_corr = seconds - correction
+    if sleeptime_corr < 0:
+        DEBUG(1, 'Took too long to start the program, missed', sleeptime_corr, 'seconds')
+
+    stopsleep = sleeptime_corr+startsleep
+    pause = interval
+
+    rotating_slash = '|/-\\'
+    rotating_slash_index = 0
+
+    while True:
+
+        now = perf_counter()
+        if now >= stopsleep:
+            break
+        elif stopsleep - now > 0.9*interval:
+            rot = rotating_slash[rotating_slash_index]
+            out = format_output(startsleep, stopsleep, seconds, now, rot)
+            print (out, end='    \r', file=sys.stderr); sys.stderr.flush()
+        elif stopsleep - now < 1.5*interval:
+            pause = min(pause/2, (stopsleep-now))
+        time.sleep(pause)
+        rotating_slash_index = (rotating_slash_index+1) % len(rotating_slash)
+
 if __name__ == '__main__':
+
+    VERSION='0.2'
 
     parser = ArgumentParser(prog='sleepy',
             description='Delay for a specified amount of time, with a countdown.')
@@ -107,8 +165,8 @@ if __name__ == '__main__':
 
     args, rest = parser.parse_known_args()
 
-    global debuglevel
-    debuglevel = args.debuglevel
+    DEBUG.debuglevel = args.debuglevel
+
     DEBUG(3, 'args:', str(args))
     DEBUG(3, 'optparse:', using_optparse)
     DEBUG(3, 'rest:', repr(rest))
@@ -117,32 +175,5 @@ if __name__ == '__main__':
     DEBUG(3, 'sleep time', sleeptime)
 
     interval = get_duration(args.interval)
-    pause = interval
-
-    now = perf_counter()
-    correction = now - starttime
-    startsleep = now
-
-    DEBUG(3, 'Correction', correction)
-    if correction < 0:
-        DEBUG(0, 'Negative time lapse detected, ignoring')
-    elif correction > 10:
-        DEBUG(0, 'Took too long to start the program')
-    sleeptime_corr = sleeptime - correction
-    if sleeptime_corr < 0:
-        DEBUG(1, 'Took too long to start the program, missed', sleeptime_corr, 'seconds')
-
-    stopsleep = sleeptime_corr+startsleep
-
-    while True:
-
-        now = perf_counter()
-        if now >= stopsleep:
-            break
-        elif stopsleep - now > 0.9*interval:
-            out = format_output(startsleep, stopsleep, sleeptime, now)
-            print (' ', out, end='    \r', file=sys.stderr); sys.stderr.flush()
-        elif stopsleep - now < 1.5*interval:
-            pause = min(pause/2, (stopsleep-now))
-        time.sleep(pause)
+    sleep(sleeptime, interval=interval, debuglevel=args.debuglevel, starttime=__starttime)
 
