@@ -78,21 +78,27 @@ def format_time(t):
     if r or days:
         r.append(str(days)+'d')
     if r or hours:
-        r.append('{:2}h'.format(hours))
-    if r or minutes:
-        r.append('{:2}m'.format(minutes))
-    fmt_sec = '{:02}s'.format(seconds)
+        r.append('{}h'.format(hours))
+#    if r or minutes:
+#        r.append('{:02}m'.format(minutes))
+    fmt_min = '{:02}'.format(minutes)
+    fmt_sec = '{:02}'.format(seconds)
 #    if subseconds > 0.1:
 #        fmt_sec += '{:.1f}'.format(subseconds)[1:]
 #    fmt_sec += 's'
 
-    r.append(fmt_sec)
+    if r:
+        r.append(fmt_min+'m')
+        r.append(fmt_sec+'s')
+    else:
+        r = [fmt_min+':', fmt_sec]
 
     r = ''.join(r)
 
     return r
 
-def format_output(start, stop, sleeptime, now, symbol, formatstring='{symbol} {sleeptime} - {passed} = {remaining}'):
+#def format_output(start, stop, sleeptime, now, symbol, formatstring='{symbol} {sleeptime} - {passed} = {remaining}'):
+def format_output(start, stop, sleeptime, now, symbol, formatstring='{symbol} [{passed}<{remaining}]'):
     remaining = format_time(stop - now)
     passed = format_time(now - start)
     sleeptime = format_time(sleeptime)
@@ -140,7 +146,7 @@ def sleep(seconds, interval=1, debuglevel=0, starttime=None):
 
 if __name__ == '__main__':
 
-    VERSION='0.2'
+    VERSION='0.3'
 
     parser = ArgumentParser(prog='sleepy',
             description='Delay for a specified amount of time, with a countdown.')
